@@ -261,3 +261,220 @@ func TestDoctor_HelpOutput(t *testing.T) {
 	}
 }
 
+func TestCheckGoVet(t *testing.T) {
+	rootDir, err := findGoModRoot()
+	if err != nil {
+		t.Skipf("Cannot find go.mod root: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		verbose bool
+	}{
+		{"verbose true", true},
+		{"verbose false", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := checkGoVet(rootDir, tt.verbose)
+
+			if result.name != "go vet" {
+				t.Errorf("checkGoVet() name = %s, want 'go vet'", result.name)
+			}
+
+			if result.status < statusPass || result.status > statusFail {
+				t.Errorf("checkGoVet() status = %d, want value between %d and %d", result.status, statusPass, statusFail)
+			}
+
+			if result.message == "" {
+				t.Error("checkGoVet() message should not be empty")
+			}
+		})
+	}
+}
+
+func TestCheckGoVet_InvalidDirectory(t *testing.T) {
+	tempDir := t.TempDir()
+
+	result := checkGoVet(tempDir, false)
+
+	if result.name != "go vet" {
+		t.Errorf("checkGoVet() name = %s, want 'go vet'", result.name)
+	}
+
+	if result.status != statusFail {
+		t.Errorf("checkGoVet() status = %d, want %d for invalid directory", result.status, statusFail)
+	}
+}
+
+func TestCheckGoModTidy(t *testing.T) {
+	rootDir, err := findGoModRoot()
+	if err != nil {
+		t.Skipf("Cannot find go.mod root: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		verbose bool
+	}{
+		{"verbose true", true},
+		{"verbose false", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := checkGoModTidy(rootDir, tt.verbose)
+
+			if result.name != "go mod tidy" {
+				t.Errorf("checkGoModTidy() name = %s, want 'go mod tidy'", result.name)
+			}
+
+			if result.status < statusPass || result.status > statusFail {
+				t.Errorf("checkGoModTidy() status = %d, want value between %d and %d", result.status, statusPass, statusFail)
+			}
+
+			if result.message == "" {
+				t.Error("checkGoModTidy() message should not be empty")
+			}
+		})
+	}
+}
+
+func TestCheckGoModTidy_InvalidDirectory(t *testing.T) {
+	tempDir := t.TempDir()
+
+	result := checkGoModTidy(tempDir, false)
+
+	if result.name != "go mod tidy" {
+		t.Errorf("checkGoModTidy() name = %s, want 'go mod tidy'", result.name)
+	}
+
+	if result.status != statusFail {
+		t.Errorf("checkGoModTidy() status = %d, want %d for invalid directory", result.status, statusFail)
+	}
+
+	if !contains(result.message, "cannot read go.mod") {
+		t.Errorf("checkGoModTidy() message = %s, should contain 'cannot read go.mod'", result.message)
+	}
+}
+
+func TestCheckTemplGenerate(t *testing.T) {
+	tempDir := t.TempDir()
+
+	result := checkTemplGenerate(tempDir, false)
+
+	if result.name != "templ generate" {
+		t.Errorf("checkTemplGenerate() name = %s, want 'templ generate'", result.name)
+	}
+
+	if result.status != statusWarn {
+		t.Errorf("checkTemplGenerate() status = %d, want %d when binary not found", result.status, statusWarn)
+	}
+
+	if !contains(result.message, "templ binary not found") {
+		t.Errorf("checkTemplGenerate() message = %s, should contain 'templ binary not found'", result.message)
+	}
+}
+
+func TestCheckTemplGenerate_WithBinary(t *testing.T) {
+	tempDir := t.TempDir()
+	binDir := filepath.Join(tempDir, "bin")
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		t.Fatalf("Failed to create bin directory: %v", err)
+	}
+
+	templPath := filepath.Join(binDir, "templ")
+	if err := os.WriteFile(templPath, []byte("#!/bin/sh\necho 'templ version'"), 0755); err != nil {
+		t.Fatalf("Failed to create fake templ binary: %v", err)
+	}
+
+	result := checkTemplGenerate(tempDir, false)
+
+	if result.name != "templ generate" {
+		t.Errorf("checkTemplGenerate() name = %s, want 'templ generate'", result.name)
+	}
+
+	if result.status != statusFail && result.status != statusPass {
+		t.Errorf("checkTemplGenerate() status = %d, want %d or %d", result.status, statusFail, statusPass)
+	}
+}
+
+func TestCheckSqlcGenerate(t *testing.T) {
+	tempDir := t.TempDir()
+
+	result := checkSqlcGenerate(tempDir, false)
+
+	if result.name != "sqlc compile" {
+		t.Errorf("checkSqlcGenerate() name = %s, want 'sqlc compile'", result.name)
+	}
+
+	if result.status != statusWarn {
+		t.Errorf("checkSqlcGenerate() status = %d, want %d when binary not found", result.status, statusWarn)
+	}
+
+	if !contains(result.message, "sqlc binary not found") {
+		t.Errorf("checkSqlcGenerate() message = %s, should contain 'sqlc binary not found'", result.message)
+	}
+}
+
+func TestCheckSqlcGenerate_WithBinary(t *testing.T) {
+	tempDir := t.TempDir()
+	binDir := filepath.Join(tempDir, "bin")
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		t.Fatalf("Failed to create bin directory: %v", err)
+	}
+
+	sqlcPath := filepath.Join(binDir, "sqlc")
+	if err := os.WriteFile(sqlcPath, []byte("#!/bin/sh\necho 'sqlc version'"), 0755); err != nil {
+		t.Fatalf("Failed to create fake sqlc binary: %v", err)
+	}
+
+	result := checkSqlcGenerate(tempDir, false)
+
+	if result.name != "sqlc compile" {
+		t.Errorf("checkSqlcGenerate() name = %s, want 'sqlc compile'", result.name)
+	}
+
+	if result.status != statusWarn {
+		t.Errorf("checkSqlcGenerate() status = %d, want %d when config not found", result.status, statusWarn)
+	}
+
+	if !contains(result.message, "database/sqlc.yaml not found") {
+		t.Errorf("checkSqlcGenerate() message = %s, should contain 'database/sqlc.yaml not found'", result.message)
+	}
+}
+
+func TestCheckSqlcGenerate_WithConfig(t *testing.T) {
+	tempDir := t.TempDir()
+	binDir := filepath.Join(tempDir, "bin")
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		t.Fatalf("Failed to create bin directory: %v", err)
+	}
+
+	sqlcPath := filepath.Join(binDir, "sqlc")
+	if err := os.WriteFile(sqlcPath, []byte("#!/bin/sh\necho 'sqlc version'"), 0755); err != nil {
+		t.Fatalf("Failed to create fake sqlc binary: %v", err)
+	}
+
+	dbDir := filepath.Join(tempDir, "database")
+	if err := os.MkdirAll(dbDir, 0755); err != nil {
+		t.Fatalf("Failed to create database directory: %v", err)
+	}
+
+	sqlcConfigPath := filepath.Join(dbDir, "sqlc.yaml")
+	if err := os.WriteFile(sqlcConfigPath, []byte("version: 2"), 0644); err != nil {
+		t.Fatalf("Failed to create sqlc.yaml: %v", err)
+	}
+
+	result := checkSqlcGenerate(tempDir, false)
+
+	if result.name != "sqlc compile" {
+		t.Errorf("checkSqlcGenerate() name = %s, want 'sqlc compile'", result.name)
+	}
+
+	if result.status != statusFail && result.status != statusPass {
+		t.Errorf("checkSqlcGenerate() status = %d, want %d or %d", result.status, statusFail, statusPass)
+	}
+}
+

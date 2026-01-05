@@ -1,0 +1,112 @@
+package views
+
+templ Index(users []User) {
+	<div class="container">
+		<h1>Users</h1>
+		<a href="/users/create" class="btn btn-primary">Create User</a>
+		<table class="table">
+			<thead>
+				<tr>
+					<th>Email</th>
+					<th>Name</th>
+					<th>Age</th>
+					<th>Is Active</th>
+					<th>Created At</th>
+					<th>Updated At</th>
+					<th>Actions</th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, user := range users {
+					<tr>
+						<td>{ user.Email }</td>
+						<td>{ user.Name }</td>
+						<td>{ fmt.Sprintf("%d", user.Age) }</td>
+						<td>{ fmt.Sprintf("%t", user.IsActive) }</td>
+						<td>{ user.CreatedAt.Format("2006-01-02 15:04:05") }</td>
+						<td>{ user.UpdatedAt.Format("2006-01-02 15:04:05") }</td>
+						<td>
+							<a href={ templ.URL(fmt.Sprintf("/users/%s", user.ID.String())) }>View</a>
+							<a href={ templ.URL(fmt.Sprintf("/users/%s/edit", user.ID.String())) }>Edit</a>
+						</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	</div>
+}
+
+templ Show(user User) {
+	<div class="container">
+		<h1>User Details</h1>
+		<dl>
+			<dt>Email</dt>
+			<dd>{ user.Email }</dd>
+			<dt>Name</dt>
+			<dd>{ user.Name }</dd>
+			<dt>Age</dt>
+			<dd>{ fmt.Sprintf("%d", user.Age) }</dd>
+			<dt>Is Active</dt>
+			<dd>{ fmt.Sprintf("%t", user.IsActive) }</dd>
+			<dt>Created At</dt>
+			<dd>{ user.CreatedAt.Format("2006-01-02 15:04:05") }</dd>
+			<dt>Updated At</dt>
+			<dd>{ user.UpdatedAt.Format("2006-01-02 15:04:05") }</dd>
+		</dl>
+		<a href="/users">Back to List</a>
+		<a href={ templ.URL(fmt.Sprintf("/users/%s/edit", user.ID.String())) }>Edit</a>
+	</div>
+}
+
+templ Create() {
+	<div class="container">
+		<h1>Create User</h1>
+		<form method="post" action="/users">
+			<div class="form-group">
+				<label for="email">Email</label>
+				<input type="email" class="form-control" id="email" name="email" required/>
+			</div>
+			<div class="form-group">
+				<label for="name">Name</label>
+				<input type="text" class="form-control" id="name" name="name" required/>
+			</div>
+			<div class="form-group">
+				<label for="age">Age</label>
+				<input type="number" class="form-control" id="age" name="age"/>
+			</div>
+			<div class="form-group">
+				<label for="is_active">Is Active</label>
+				<input type="checkbox" id="is_active" name="is_active"/>
+			</div>
+			<button type="submit" class="btn btn-primary">Create</button>
+			<a href="/users" class="btn btn-secondary">Cancel</a>
+		</form>
+	</div>
+}
+
+templ Edit(user User) {
+	<div class="container">
+		<h1>Edit User</h1>
+		<form method="post" action={ templ.URL(fmt.Sprintf("/users/%s", user.ID.String())) }>
+			<input type="hidden" name="_method" value="PUT"/>
+			<div class="form-group">
+				<label for="email">Email</label>
+				<input type="email" class="form-control" id="email" name="email" value={ user.Email } required/>
+			</div>
+			<div class="form-group">
+				<label for="name">Name</label>
+				<input type="text" class="form-control" id="name" name="name" value={ user.Name } required/>
+			</div>
+			<div class="form-group">
+				<label for="age">Age</label>
+				<input type="number" class="form-control" id="age" name="age" value={ fmt.Sprintf("%d", user.Age) }/>
+			</div>
+			<div class="form-group">
+				<label for="is_active">Is Active</label>
+				<input type="checkbox" id="is_active" name="is_active" if user.IsActive { checked }/>
+			</div>
+			<button type="submit" class="btn btn-primary">Update</button>
+			<a href="/users" class="btn btn-secondary">Cancel</a>
+		</form>
+	</div>
+}

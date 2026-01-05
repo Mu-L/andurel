@@ -550,3 +550,80 @@ func TestTable_SetCreatedBy(t *testing.T) {
 		t.Errorf("Expected returned table CreatedBy '001_create_users.sql', got '%s'", result.CreatedBy)
 	}
 }
+
+func TestCatalog_GetTable_DefaultSchema(t *testing.T) {
+	cat := NewCatalog("public")
+
+	table := NewTable("public", "users")
+	table.AddColumn(NewColumn("id", "UUID").SetPrimaryKey())
+	err := cat.AddTable("public", table)
+	if err != nil {
+		t.Fatalf("AddTable failed: %v", err)
+	}
+
+	retrievedTable, err := cat.GetTable("", "users")
+	if err != nil {
+		t.Fatalf("GetTable with empty schema failed: %v", err)
+	}
+
+	if retrievedTable.Name != "users" {
+		t.Errorf("Expected table name 'users', got '%s'", retrievedTable.Name)
+	}
+}
+
+func TestCatalog_ListTables_EmptySchema(t *testing.T) {
+	cat := NewCatalog("public")
+
+	tables, err := cat.ListTables("public")
+	if err != nil {
+		t.Fatalf("ListTables on empty schema failed: %v", err)
+	}
+
+	if len(tables) != 0 {
+		t.Errorf("Expected 0 tables in empty schema, got %d", len(tables))
+	}
+}
+
+func TestCatalog_MultipleSchemas(t *testing.T) {
+	cat := NewCatalog("public")
+
+	_, err := cat.CreateSchema("schema1")
+	if err != nil {
+		t.Fatalf("CreateSchema schema1 failed: %v", err)
+	}
+
+	_, err = cat.CreateSchema("schema2")
+	if err != nil {
+		t.Fatalf("CreateSchema schema2 failed: %v", err)
+	}
+
+	table1 := NewTable("schema1", "table1")
+	table1.AddColumn(NewColumn("id", "UUID").SetPrimaryKey())
+	err = cat.AddTable("schema1", table1)
+	if err != nil {
+		t.Fatalf("AddTable to schema1 failed: %v", err)
+	}
+
+	table2 := NewTable("schema2", "table2")
+	table2.AddColumn(NewColumn("id", "UUID").SetPrimaryKey())
+	err = cat.AddTable("schema2", table2)
+	if err != nil {
+		t.Fatalf("AddTable to schema2 failed: %v", err)
+	}
+
+	tables1, err := cat.ListTables("schema1")
+	if err != nil {
+		t.Fatalf("ListTables schema1 failed: %v", err)
+	}
+	if len(tables1) != 1 {
+		t.Errorf("Expected 1 table in schema1, got %d", len(tables1))
+	}
+
+	tables2, err := cat.ListTables("schema2")
+	if err != nil {
+		t.Fatalf("ListTables schema2 failed: %v", err)
+	}
+	if len(tables2) != 1 {
+		t.Errorf("Expected 1 table in schema2, got %d", len(tables2))
+	}
+}

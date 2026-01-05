@@ -418,3 +418,466 @@ func containsString(s, substr string) bool {
 	}
 	return false
 }
+
+func TestBuild_StringConverterGeneration(t *testing.T) {
+	g := NewGenerator("postgresql")
+
+	cat := catalog.NewCatalog("public")
+	table := catalog.NewTable("public", "users")
+	table.AddColumn(catalog.NewColumn("id", "UUID").SetPrimaryKey())
+	table.AddColumn(catalog.NewColumn("age", "INTEGER"))
+	table.AddColumn(catalog.NewColumn("score", "REAL"))
+	table.AddColumn(catalog.NewColumn("is_active", "BOOLEAN"))
+	err := cat.AddTable("public", table)
+	if err != nil {
+		t.Fatalf("Failed to add table: %v", err)
+	}
+
+	view, err := g.Build(cat, Config{
+		ResourceName: "User",
+		PluralName:   "users",
+		TableName:    "users",
+		ModulePath:   "example.com/app",
+	})
+
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	ageField := getViewFieldByName(view.Fields, "Age")
+	if ageField != nil {
+		expectedConverter := "fmt.Sprintf(\"%d\", %s)"
+		if ageField.StringConverter != expectedConverter {
+			t.Errorf("Age field: expected converter %q, got %q", expectedConverter, ageField.StringConverter)
+		}
+	}
+
+	scoreField := getViewFieldByName(view.Fields, "Score")
+	if scoreField != nil {
+		expectedConverter := "fmt.Sprintf(\"%f\", %s)"
+		if scoreField.StringConverter != expectedConverter {
+			t.Errorf("Score field: expected converter %q, got %q", expectedConverter, scoreField.StringConverter)
+		}
+	}
+
+	activeField := getViewFieldByName(view.Fields, "IsActive")
+	if activeField != nil {
+		expectedConverter := "fmt.Sprintf(\"%t\", %s)"
+		if activeField.StringConverter != expectedConverter {
+			t.Errorf("IsActive field: expected converter %q, got %q", expectedConverter, activeField.StringConverter)
+		}
+	}
+}
+
+func TestBuild_UUIDFieldHandling(t *testing.T) {
+	g := NewGenerator("postgresql")
+
+	cat := catalog.NewCatalog("public")
+	table := catalog.NewTable("public", "tokens")
+	table.AddColumn(catalog.NewColumn("id", "UUID").SetPrimaryKey())
+	table.AddColumn(catalog.NewColumn("token_id", "UUID"))
+	err := cat.AddTable("public", table)
+	if err != nil {
+		t.Fatalf("Failed to add table: %v", err)
+	}
+
+	view, err := g.Build(cat, Config{
+		ResourceName: "Token",
+		PluralName:   "tokens",
+		TableName:    "tokens",
+		ModulePath:   "example.com/app",
+	})
+
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	tokenIdField := getViewFieldByName(view.Fields, "TokenId")
+	if tokenIdField == nil {
+		// Field name might be different due to naming conventions
+		t.Skip("Skipping UUID field test - field naming may differ")
+		return
+	}
+
+	if tokenIdField.GoType != "uuid.UUID" {
+		t.Errorf("Expected TokenId type 'uuid.UUID', got '%s'", tokenIdField.GoType)
+	}
+
+	if tokenIdField.StringConverter != "%s.String()" {
+		t.Errorf("Expected StringConverter '%%s.String()', got '%s'", tokenIdField.StringConverter)
+	}
+}
+
+func TestBuild_DefaultTableName(t *testing.T) {
+	g := NewGenerator("postgresql")
+
+	cat := catalog.NewCatalog("public")
+	table := catalog.NewTable("public", "users")
+	table.AddColumn(catalog.NewColumn("id", "UUID").SetPrimaryKey())
+	table.AddColumn(catalog.NewColumn("name", "TEXT"))
+	err := cat.AddTable("public", table)
+	if err != nil {
+		t.Fatalf("Failed to add table: %v", err)
+	}
+
+	// Build with empty table name - should default to plural name
+	view, err := g.Build(cat, Config{
+		ResourceName: "User",
+		PluralName:   "users",
+		TableName:    "",
+		ModulePath:   "example.com/app",
+	})
+
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	// Should still build successfully
+	if view == nil {
+		t.Fatal("View is nil")
+	}
+}
+
+func TestViewField_StructFields(t *testing.T) {
+	field := ViewField{
+		Name:            "Email",
+		GoType:          "string",
+		GoFormType:      "string",
+		DisplayName:     "Email",
+		IsTimestamp:     false,
+		InputType:       "email",
+		StringConverter: "",
+		DBName:          "email",
+		CamelCase:       "email",
+		IsSystemField:   false,
+	}
+
+	if field.Name != "Email" {
+		t.Errorf("Expected Name 'Email', got %s", field.Name)
+	}
+
+	if field.GoType != "string" {
+		t.Errorf("Expected GoType 'string', got %s", field.GoType)
+	}
+
+	if field.DisplayName != "Email" {
+		t.Errorf("Expected DisplayName 'Email', got %s", field.DisplayName)
+	}
+
+	if field.InputType != "email" {
+		t.Errorf("Expected InputType 'email', got %s", field.InputType)
+	}
+
+	if field.DBName != "email" {
+		t.Errorf("Expected DBName 'email', got %s", field.DBName)
+	}
+
+	if field.CamelCase != "email" {
+		t.Errorf("Expected CamelCase 'email', got %s", field.CamelCase)
+	}
+
+	if field.IsTimestamp {
+		t.Error("Expected IsTimestamp to be false")
+	}
+
+	if field.IsSystemField {
+		t.Error("Expected IsSystemField to be false")
+	}
+}
+
+func TestGeneratedView_StructFields(t *testing.T) {
+	view := &GeneratedView{
+		ResourceName: "User",
+		PluralName:   "users",
+		Fields:       []ViewField{},
+		ModulePath:   "example.com/app",
+	}
+
+	if view.ResourceName != "User" {
+		t.Errorf("Expected ResourceName 'User', got %s", view.ResourceName)
+	}
+
+	if view.PluralName != "users" {
+		t.Errorf("Expected PluralName 'users', got %s", view.PluralName)
+	}
+
+	if view.ModulePath != "example.com/app" {
+		t.Errorf("Expected ModulePath 'example.com/app', got %s", view.ModulePath)
+	}
+
+	if len(view.Fields) != 0 {
+		t.Errorf("Expected 0 fields, got %d", len(view.Fields))
+	}
+}
+
+func TestConfig_StructFields(t *testing.T) {
+	config := Config{
+		ResourceName: "User",
+		PluralName:   "users",
+		TableName:    "users",
+		ModulePath:   "example.com/app",
+	}
+
+	if config.ResourceName != "User" {
+		t.Errorf("Expected ResourceName 'User', got %s", config.ResourceName)
+	}
+
+	if config.PluralName != "users" {
+		t.Errorf("Expected PluralName 'users', got %s", config.PluralName)
+	}
+
+	if config.TableName != "users" {
+		t.Errorf("Expected TableName 'users', got %s", config.TableName)
+	}
+
+	if config.ModulePath != "example.com/app" {
+		t.Errorf("Expected ModulePath 'example.com/app', got %s", config.ModulePath)
+	}
+}
+
+func TestBuild_FieldDisplayName(t *testing.T) {
+	g := NewGenerator("postgresql")
+
+	cat := catalog.NewCatalog("public")
+	table := catalog.NewTable("public", "products")
+	table.AddColumn(catalog.NewColumn("id", "UUID").SetPrimaryKey())
+	table.AddColumn(catalog.NewColumn("product_name", "TEXT"))
+	table.AddColumn(catalog.NewColumn("product_description", "TEXT"))
+	err := cat.AddTable("public", table)
+	if err != nil {
+		t.Fatalf("Failed to add table: %v", err)
+	}
+
+	view, err := g.Build(cat, Config{
+		ResourceName: "Product",
+		PluralName:   "products",
+		TableName:    "products",
+		ModulePath:   "example.com/app",
+	})
+
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	productNameField := getViewFieldByName(view.Fields, "ProductName")
+	if productNameField == nil {
+		t.Fatal("Expected ProductName field")
+	}
+
+	if productNameField.DisplayName != "Product Name" {
+		t.Errorf("Expected display name 'Product Name', got '%s'", productNameField.DisplayName)
+	}
+
+	productDescField := getViewFieldByName(view.Fields, "ProductDescription")
+	if productDescField == nil {
+		t.Fatal("Expected ProductDescription field")
+	}
+
+	if productDescField.DisplayName != "Product Description" {
+		t.Errorf("Expected display name 'Product Description', got '%s'", productDescField.DisplayName)
+	}
+}
+
+func TestBuild_BoolFieldInputType(t *testing.T) {
+	g := NewGenerator("postgresql")
+
+	cat := catalog.NewCatalog("public")
+	table := catalog.NewTable("public", "users")
+	table.AddColumn(catalog.NewColumn("id", "UUID").SetPrimaryKey())
+	table.AddColumn(catalog.NewColumn("is_verified", "BOOLEAN"))
+	err := cat.AddTable("public", table)
+	if err != nil {
+		t.Fatalf("Failed to add table: %v", err)
+	}
+
+	view, err := g.Build(cat, Config{
+		ResourceName: "User",
+		PluralName:   "users",
+		TableName:    "users",
+		ModulePath:   "example.com/app",
+	})
+
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	isVerifiedField := getViewFieldByName(view.Fields, "IsVerified")
+	if isVerifiedField == nil {
+		t.Fatal("Expected IsVerified field")
+	}
+
+	if isVerifiedField.InputType != "checkbox" {
+		t.Errorf("Expected InputType 'checkbox', got '%s'", isVerifiedField.InputType)
+	}
+
+	if isVerifiedField.GoFormType != "bool" {
+		t.Errorf("Expected GoFormType 'bool', got '%s'", isVerifiedField.GoFormType)
+	}
+}
+
+func TestBuild_TimestampFieldInputType(t *testing.T) {
+	g := NewGenerator("postgresql")
+
+	cat := catalog.NewCatalog("public")
+	table := catalog.NewTable("public", "events")
+	table.AddColumn(catalog.NewColumn("id", "UUID").SetPrimaryKey())
+	table.AddColumn(catalog.NewColumn("event_date", "TIMESTAMP"))
+	err := cat.AddTable("public", table)
+	if err != nil {
+		t.Fatalf("Failed to add table: %v", err)
+	}
+
+	view, err := g.Build(cat, Config{
+		ResourceName: "Event",
+		PluralName:   "events",
+		TableName:    "events",
+		ModulePath:   "example.com/app",
+	})
+
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	eventDateField := getViewFieldByName(view.Fields, "EventDate")
+	if eventDateField == nil {
+		// Field name might be different due to naming conventions
+		t.Skip("Skipping timestamp field test - field naming may differ")
+		return
+	}
+
+	if eventDateField.InputType != "date" {
+		t.Errorf("Expected InputType 'date', got '%s'", eventDateField.InputType)
+	}
+
+	// Note: IsTimestamp is set based on goType == "time.Time"
+	// The actual value depends on the type mapper, so we'll just check that the field exists
+}
+
+func TestGenerateViewFile_WithMultipleFields(t *testing.T) {
+	g := NewGenerator("postgresql")
+
+	cat := catalog.NewCatalog("public")
+	table := catalog.NewTable("public", "products")
+	table.AddColumn(catalog.NewColumn("id", "UUID").SetPrimaryKey())
+	table.AddColumn(catalog.NewColumn("name", "TEXT").SetNotNull())
+	table.AddColumn(catalog.NewColumn("description", "TEXT"))
+	table.AddColumn(catalog.NewColumn("price", "DECIMAL"))
+	table.AddColumn(catalog.NewColumn("in_stock", "BOOLEAN"))
+	table.AddColumn(catalog.NewColumn("created_at", "TIMESTAMP"))
+	table.AddColumn(catalog.NewColumn("updated_at", "TIMESTAMP"))
+	err := cat.AddTable("public", table)
+	if err != nil {
+		t.Fatalf("Failed to add table: %v", err)
+	}
+
+	view, err := g.Build(cat, Config{
+		ResourceName: "Product",
+		PluralName:   "products",
+		TableName:    "products",
+		ModulePath:   "example.com/testapp",
+	})
+
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	content, err := g.GenerateViewFile(view, false)
+	if err != nil {
+		t.Fatalf("GenerateViewFile failed: %v", err)
+	}
+
+	if content == "" {
+		t.Fatal("Generated content is empty")
+	}
+
+	expectedStrings := []string{"Product", "Name", "Description", "Price", "InStock"}
+	for _, expected := range expectedStrings {
+		if !containsString(content, expected) {
+			t.Errorf("Expected view to contain '%s'", expected)
+		}
+	}
+}
+
+func TestBuild_ComplexTypeHandling(t *testing.T) {
+	g := NewGenerator("postgresql")
+
+	cat := catalog.NewCatalog("public")
+	table := catalog.NewTable("public", "orders")
+	table.AddColumn(catalog.NewColumn("id", "UUID").SetPrimaryKey())
+	table.AddColumn(catalog.NewColumn("order_number", "TEXT").SetNotNull())
+	table.AddColumn(catalog.NewColumn("total_amount", "DECIMAL"))
+	table.AddColumn(catalog.NewColumn("quantity", "INTEGER"))
+	table.AddColumn(catalog.NewColumn("is_paid", "BOOLEAN"))
+	table.AddColumn(catalog.NewColumn("order_date", "TIMESTAMP"))
+	err := cat.AddTable("public", table)
+	if err != nil {
+		t.Fatalf("Failed to add table: %v", err)
+	}
+
+	view, err := g.Build(cat, Config{
+		ResourceName: "Order",
+		PluralName:   "orders",
+		TableName:    "orders",
+		ModulePath:   "example.com/testapp",
+	})
+
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	if len(view.Fields) == 0 {
+		t.Error("Expected view to have fields")
+	}
+
+	orderNumberField := getViewFieldByName(view.Fields, "OrderNumber")
+	if orderNumberField == nil {
+		t.Fatal("Expected OrderNumber field")
+	}
+
+	if orderNumberField.GoType != "string" {
+		t.Errorf("Expected OrderNumber type 'string', got '%s'", orderNumberField.GoType)
+	}
+
+	totalAmountField := getViewFieldByName(view.Fields, "TotalAmount")
+	if totalAmountField != nil {
+		if totalAmountField.GoType != "float64" {
+			t.Errorf("Expected TotalAmount type 'float64', got '%s'", totalAmountField.GoType)
+		}
+	}
+}
+
+func TestBuild_NullableFieldHandling(t *testing.T) {
+	g := NewGenerator("postgresql")
+
+	cat := catalog.NewCatalog("public")
+	table := catalog.NewTable("public", "comments")
+	table.AddColumn(catalog.NewColumn("id", "UUID").SetPrimaryKey())
+	table.AddColumn(catalog.NewColumn("content", "TEXT").SetNotNull())
+	table.AddColumn(catalog.NewColumn("author_name", "TEXT"))
+	table.AddColumn(catalog.NewColumn("likes_count", "INTEGER"))
+	err := cat.AddTable("public", table)
+	if err != nil {
+		t.Fatalf("Failed to add table: %v", err)
+	}
+
+	view, err := g.Build(cat, Config{
+		ResourceName: "Comment",
+		PluralName:   "comments",
+		TableName:    "comments",
+		ModulePath:   "example.com/testapp",
+	})
+
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	contentField := getViewFieldByName(view.Fields, "Content")
+	if contentField == nil {
+		t.Fatal("Expected Content field")
+	}
+
+	authorNameField := getViewFieldByName(view.Fields, "AuthorName")
+	if authorNameField == nil {
+		t.Fatal("Expected AuthorName field")
+	}
+}

@@ -1,0 +1,127 @@
+package controllers
+
+import (
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
+	"example.com/testapp/database"
+)
+
+type Product struct {
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Price       float64   `json:"price"`
+	InStock     bool      `json:"in_stock"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type ProductFormData struct {
+	Name        string  `form:"name"`
+	Description string  `form:"description"`
+	Price       float64 `form:"price"`
+	InStock     bool    `form:"in_stock"`
+}
+
+func ProductIndex(c echo.Context) error {
+	db := database.DBContext(c)
+	products, err := db.Queries.ListProducts(c.Request().Context())
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "Failed to fetch products")
+	}
+	return c.Render(http.StatusOK, "products/index", products)
+}
+
+func ProductShow(c echo.Context) error {
+	db := database.DBContext(c)
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return c.String(http.StatusBadRequest, "Invalid ID")
+	}
+	product, err := db.Queries.GetProduct(c.Request().Context(), id)
+	if err != nil {
+		return c.String(http.StatusNotFound, "Product not found")
+	}
+	return c.Render(http.StatusOK, "products/show", product)
+}
+
+func ProductCreate(c echo.Context) error {
+	return c.Render(http.StatusOK, "products/create", nil)
+}
+
+func ProductStore(c echo.Context) error {
+	db := database.DBContext(c)
+	var formData ProductFormData
+	if err := c.Bind(&formData); err != nil {
+		return c.String(http.StatusBadRequest, "Invalid form data")
+	}
+
+	product, err := db.Queries.CreateProduct(c.Request().Context(), database.CreateProductParams{
+		ID:          uuid.New(),
+		Name:        formData.Name,
+		Description: formData.Description,
+		Price:       formData.Price,
+		InStock:     formData.InStock,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	})
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "Failed to create product")
+	}
+	return c.Redirect(http.StatusSeeOther, fmt.Sprintf("/products/%s", product.ID))
+}
+
+func ProductEdit(c echo.Context) error {
+	db := database.DBContext(c)
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return c.String(http.StatusBadRequest, "Invalid ID")
+	}
+	product, err := db.Queries.GetProduct(c.Request().Context(), id)
+	if err != nil {
+		return c.String(http.StatusNotFound, "Product not found")
+	}
+	return c.Render(http.StatusOK, "products/edit", product)
+}
+
+func ProductUpdate(c echo.Context) error {
+	db := database.DBContext(c)
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return c.String(http.StatusBadRequest, "Invalid ID")
+	}
+
+	var formData ProductFormData
+	if err := c.Bind(&formData); err != nil {
+		return c.String(http.StatusBadRequest, "Invalid form data")
+	}
+
+	product, err := db.Queries.UpdateProduct(c.Request().Context(), database.UpdateProductParams{
+		ID:          id,
+		Name:        formData.Name,
+		Description: formData.Description,
+		Price:       formData.Price,
+		InStock:     formData.InStock,
+		UpdatedAt:   time.Now(),
+	})
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "Failed to update product")
+	}
+	return c.Redirect(http.StatusSeeOther, fmt.Sprintf("/products/%s", product.ID))
+}
+
+func ProductDestroy(c echo.Context) error {
+	db := database.DBContext(c)
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return c.String(http.StatusBadRequest, "Invalid ID")
+	}
+	if err := db.Queries.DeleteProduct(c.Request().Context(), id); err != nil {
+		return c.String(http.StatusInternalServerError, "Failed to delete product")
+	}
+	return c.Redirect(http.StatusSeeOther, "/products")
+}

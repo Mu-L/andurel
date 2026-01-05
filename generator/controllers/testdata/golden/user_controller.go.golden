@@ -1,0 +1,127 @@
+package controllers
+
+import (
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
+	"example.com/testapp/database"
+)
+
+type User struct {
+	ID        uuid.UUID `json:"id"`
+	Email     string    `json:"email"`
+	Name      string    `json:"name"`
+	Age       int32     `json:"age"`
+	IsActive  bool      `json:"is_active"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type UserFormData struct {
+	Email    string `form:"email"`
+	Name     string `form:"name"`
+	Age      int32  `form:"age"`
+	IsActive bool   `form:"is_active"`
+}
+
+func UserIndex(c echo.Context) error {
+	db := database.DBContext(c)
+	users, err := db.Queries.ListUsers(c.Request().Context())
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "Failed to fetch users")
+	}
+	return c.Render(http.StatusOK, "users/index", users)
+}
+
+func UserShow(c echo.Context) error {
+	db := database.DBContext(c)
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return c.String(http.StatusBadRequest, "Invalid ID")
+	}
+	user, err := db.Queries.GetUser(c.Request().Context(), id)
+	if err != nil {
+		return c.String(http.StatusNotFound, "User not found")
+	}
+	return c.Render(http.StatusOK, "users/show", user)
+}
+
+func UserCreate(c echo.Context) error {
+	return c.Render(http.StatusOK, "users/create", nil)
+}
+
+func UserStore(c echo.Context) error {
+	db := database.DBContext(c)
+	var formData UserFormData
+	if err := c.Bind(&formData); err != nil {
+		return c.String(http.StatusBadRequest, "Invalid form data")
+	}
+
+	user, err := db.Queries.CreateUser(c.Request().Context(), database.CreateUserParams{
+		ID:        uuid.New(),
+		Email:     formData.Email,
+		Name:      formData.Name,
+		Age:       formData.Age,
+		IsActive:  formData.IsActive,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	})
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "Failed to create user")
+	}
+	return c.Redirect(http.StatusSeeOther, fmt.Sprintf("/users/%s", user.ID))
+}
+
+func UserEdit(c echo.Context) error {
+	db := database.DBContext(c)
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return c.String(http.StatusBadRequest, "Invalid ID")
+	}
+	user, err := db.Queries.GetUser(c.Request().Context(), id)
+	if err != nil {
+		return c.String(http.StatusNotFound, "User not found")
+	}
+	return c.Render(http.StatusOK, "users/edit", user)
+}
+
+func UserUpdate(c echo.Context) error {
+	db := database.DBContext(c)
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return c.String(http.StatusBadRequest, "Invalid ID")
+	}
+
+	var formData UserFormData
+	if err := c.Bind(&formData); err != nil {
+		return c.String(http.StatusBadRequest, "Invalid form data")
+	}
+
+	user, err := db.Queries.UpdateUser(c.Request().Context(), database.UpdateUserParams{
+		ID:        id,
+		Email:     formData.Email,
+		Name:      formData.Name,
+		Age:       formData.Age,
+		IsActive:  formData.IsActive,
+		UpdatedAt: time.Now(),
+	})
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "Failed to update user")
+	}
+	return c.Redirect(http.StatusSeeOther, fmt.Sprintf("/users/%s", user.ID))
+}
+
+func UserDestroy(c echo.Context) error {
+	db := database.DBContext(c)
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return c.String(http.StatusBadRequest, "Invalid ID")
+	}
+	if err := db.Queries.DeleteUser(c.Request().Context(), id); err != nil {
+		return c.String(http.StatusInternalServerError, "Failed to delete user")
+	}
+	return c.Redirect(http.StatusSeeOther, "/users")
+}
