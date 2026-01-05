@@ -1,0 +1,115 @@
+package controllers
+
+import (
+	"log/slog"
+	"net/http"
+
+	"github.com/test/testapp/config"
+	"github.com/test/testapp/internal/storage"
+	"github.com/test/testapp/router/cookies"
+	"github.com/test/testapp/router/routes"
+	"github.com/test/testapp/services"
+	"github.com/test/testapp/views"
+
+	"github.com/labstack/echo/v4"
+	"github.com/starfederation/datastar-go/datastar"
+)
+
+type Sessions struct {
+	db  storage.Pool
+	cfg config.Config
+}
+
+func NewSessions(db storage.Pool, cfg config.Config) Sessions {
+	return Sessions{db, cfg}
+}
+
+func (s Sessions) New(c echo.Context) error {
+	return render(c, views.LoginForm())
+}
+
+func (s Sessions) Create(c echo.Context) error {
+	var payload struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	if err := c.Bind(&payload); err != nil {
+		slog.ErrorContext(
+			c.Request().Context(),
+			"could not parse login form payload",
+			"error",
+			err,
+		)
+		return render(c, views.BadRequest())
+	}
+
+	user, err := services.AuthenticateUser(
+		c.Request().Context(),
+		s.db,
+		s.cfg.Auth.Pepper,
+		services.LoginData{
+			Email:    payload.Email,
+			Password: payload.Password,
+		},
+	)
+	if err != nil {
+		slog.ErrorContext(
+			c.Request().Context(),
+			"failed to authenticate user",
+			"error",
+			err,
+		)
+
+		var errorMsg string
+		switch err {
+		case services.ErrInvalidCredentials:
+			errorMsg = "Invalid email or password"
+		case services.ErrEmailNotVerified:
+			errorMsg = "Please verify your email before logging in"
+		default:
+			errorMsg = "Failed to log in"
+		}
+
+		if flashErr := cookies.AddFlash(c, cookies.FlashError, errorMsg); flashErr != nil {
+			return render(c, views.InternalError())
+		}
+
+		return c.Redirect(http.StatusSeeOther, routes.SessionNew.URL())
+	}
+
+	if err := cookies.CreateAppSession(c, user); err != nil {
+		slog.ErrorContext(
+			c.Request().Context(),
+			"failed to create session",
+			"error",
+			err,
+		)
+
+		return render(c, views.InternalError())
+	}
+
+	if flashErr := cookies.AddFlash(c, cookies.FlashSuccess, "Successfully logged in!"); flashErr != nil {
+		return render(c, views.InternalError())
+	}
+
+	return datastar.NewSSE(c.Response(), c.Request()).Redirect(routes.HomePage.URL())
+}
+
+func (s Sessions) Destroy(c echo.Context) error {
+	if err := cookies.DestroyAppSession(c); err != nil {
+		slog.ErrorContext(
+			c.Request().Context(),
+			"failed to destroy session",
+			"error",
+			err,
+		)
+		return render(c, views.InternalError())
+	}
+
+	if flashErr := cookies.AddFlash(c, cookies.FlashSuccess, "Successfully logged out!"); flashErr != nil {
+		return render(c, views.InternalError())
+	}
+
+	return c.Redirect(http.StatusSeeOther, routes.SessionNew.URL())
+}

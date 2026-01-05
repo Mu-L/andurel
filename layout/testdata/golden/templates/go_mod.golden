@@ -1,0 +1,3 @@
+module github.com/test/testapp
+
+go 1.25.0
