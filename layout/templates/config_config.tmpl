@@ -1,46 +1,24 @@
-// Package config provides application-wide configuration settings.
+// Package config loads, validates, and provides application configuration.
 package config
 
-import (
-	"os"
+import "go.uber.org/fx"
 
-	"go.uber.org/fx"
-)
-
-const (
-	DefaultEnvironment = "development"
-	DefaultProjectName = "{{.ProjectName}}"
-)
-
-var Environment = func() string {
-	if env := os.Getenv("ENVIRONMENT"); env != "" {
-		return env
-	}
-
-	return DefaultEnvironment
-}
-
-var ProjectName = func() string {
-	if projectName := os.Getenv("PROJECT_NAME"); projectName != "" {
-		return projectName
-	}
-
-	return DefaultProjectName
-}
-
-// Module provides all application configuration constructors to the dependency container.
+// Module registers independent configuration constructors. Fx evaluates only
+// the constructors required by the active application graph.
 var Module = fx.Module("config",
 	fx.Provide(
-		NewAppCfg,
-		NewDatabaseCfg,
-		NewQueueCfg,
-		NewTelemetryCfg,
-		NewEmailSenders,
+		NewApp,
+		NewHTTP,
+		NewSession,
+		NewAuth,
+		NewDatabase,
+		NewQueueInsert,
+		NewQueueWorker,
+		NewTelemetry,
+		NewMail,
+		NewMailTransport,
 {{- if .Inertia}}
-		NewInertiaCfg,
-{{- end}}
-{{- range .Blueprint.Config.SortedFields}}
-		New{{.Name}}Cfg,
+		NewInertia,
 {{- end}}
 	),
 )

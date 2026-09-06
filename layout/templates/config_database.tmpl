@@ -1,92 +1,58 @@
 package config
 
 import (
-	"time"
+	"errors"
+	"fmt"
 
-	"github.com/caarlos0/env/v11"
 	"github.com/mbvlabs/andurel/pkg/storage"
 )
 
 const (
-	DefaultDatabaseKind             = "postgres"
-	DefaultDatabaseHost             = "127.0.0.1"
-	DefaultDatabasePort             = "5432"
-	DefaultDatabaseName             = "andurel"
-	DefaultDatabaseUser             = "postgres"
-	DefaultDatabasePassword         = "postgres"
-	DefaultDatabaseSSLMode          = "disable"
-	DefaultApplicationName          = "andurel"
-	DefaultConnectTimeout           = 5 * time.Second
-	DefaultStatementCacheCapacity   = 512
-	DefaultDescriptionCacheCapacity = 512
-	DefaultMaxOpenConnections       = 25
-	DefaultMaxIdleConnections       = 25
-	DefaultConnectionMaxLifetime    = time.Hour
-	DefaultConnectionMaxIdleTime    = 30 * time.Minute
-	DefaultOpenTelemetry            = true
+	DefaultDatabaseKind           = "postgres"
+	DefaultDatabaseHost           = "127.0.0.1"
+	DefaultDatabasePort           = "5432"
+	DefaultDatabaseName           = "andurel"
+	DefaultDatabaseUser           = "postgres"
+	DefaultDatabasePassword       = "postgres"
+	DefaultDatabaseSSLMode        = "disable"
+	DefaultDatabaseApplicationName = "andurel"
 )
 
-type Database struct {
-	Host                     string        `env:"DB_HOST"`
-	Port                     string        `env:"DB_PORT"`
-	Name                     string        `env:"DB_NAME"`
-	User                     string        `env:"DB_USER"`
-	Password                 string        `env:"DB_PASSWORD"`
-	DatabaseKind             string        `env:"DB_KIND"`
-	SSLMode                  string        `env:"DB_SSL_MODE"`
-	ApplicationName          string        `env:"DB_APPLICATION_NAME"`
-	ConnectTimeout           time.Duration `env:"DB_CONNECT_TIMEOUT"`
-	StatementCacheCapacity   int           `env:"DB_STATEMENT_CACHE_CAPACITY"`
-	DescriptionCacheCapacity int           `env:"DB_DESCRIPTION_CACHE_CAPACITY"`
-	MaxOpenConnections       int           `env:"DB_MAX_OPEN_CONNECTIONS"`
-	MaxIdleConnections       int           `env:"DB_MAX_IDLE_CONNECTIONS"`
-	ConnectionMaxLifetime    time.Duration `env:"DB_CONNECTION_MAX_LIFETIME"`
-	ConnectionMaxIdleTime    time.Duration `env:"DB_CONNECTION_MAX_IDLE_TIME"`
-	OpenTelemetry            bool          `env:"DB_OPEN_TELEMETRY"`
-}
+func NewDatabase() (storage.Config, error) {
+	env := newEnvironment()
+	cfg := storage.DefaultConfig()
+	cfg.DatabaseKind = env.String("DB_KIND", DefaultDatabaseKind)
+	cfg.Host = env.String("DB_HOST", DefaultDatabaseHost)
+	cfg.Port = env.String("DB_PORT", DefaultDatabasePort)
+	cfg.Name = env.String("DB_NAME", DefaultDatabaseName)
+	cfg.User = env.String("DB_USER", DefaultDatabaseUser)
+	cfg.Password = env.String("DB_PASSWORD", DefaultDatabasePassword)
+	cfg.SSLMode = env.String("DB_SSL_MODE", DefaultDatabaseSSLMode)
+	cfg.ApplicationName = env.String("DB_APPLICATION_NAME", DefaultDatabaseApplicationName)
+	cfg.ConnectTimeout = env.Duration("DB_CONNECT_TIMEOUT", cfg.ConnectTimeout)
+	cfg.StatementCacheCapacity = env.Int(
+		"DB_STATEMENT_CACHE_CAPACITY",
+		cfg.StatementCacheCapacity,
+	)
+	cfg.DescriptionCacheCapacity = env.Int(
+		"DB_DESCRIPTION_CACHE_CAPACITY",
+		cfg.DescriptionCacheCapacity,
+	)
+	cfg.MaxOpenConnections = env.Int("DB_MAX_OPEN_CONNECTIONS", cfg.MaxOpenConnections)
+	cfg.MaxIdleConnections = env.Int("DB_MAX_IDLE_CONNECTIONS", cfg.MaxIdleConnections)
+	cfg.ConnectionMaxLifetime = env.Duration(
+		"DB_CONNECTION_MAX_LIFETIME",
+		cfg.ConnectionMaxLifetime,
+	)
+	cfg.ConnectionMaxIdleTime = env.Duration(
+		"DB_CONNECTION_MAX_IDLE_TIME",
+		cfg.ConnectionMaxIdleTime,
+	)
+	cfg.OpenTelemetry = env.Bool("DB_OPEN_TELEMETRY", true)
 
-func NewDatabaseCfg() (storage.Config, error) {
-	cfg := Database{
-		Host:                     DefaultDatabaseHost,
-		Port:                     DefaultDatabasePort,
-		Name:                     DefaultDatabaseName,
-		User:                     DefaultDatabaseUser,
-		Password:                 DefaultDatabasePassword,
-		DatabaseKind:             DefaultDatabaseKind,
-		SSLMode:                  DefaultDatabaseSSLMode,
-		ApplicationName:          DefaultApplicationName,
-		ConnectTimeout:           DefaultConnectTimeout,
-		StatementCacheCapacity:   DefaultStatementCacheCapacity,
-		DescriptionCacheCapacity: DefaultDescriptionCacheCapacity,
-		MaxOpenConnections:       DefaultMaxOpenConnections,
-		MaxIdleConnections:       DefaultMaxIdleConnections,
-		ConnectionMaxLifetime:    DefaultConnectionMaxLifetime,
-		ConnectionMaxIdleTime:    DefaultConnectionMaxIdleTime,
-		OpenTelemetry:            DefaultOpenTelemetry,
+	if err := errors.Join(env.Err(), cfg.Validate()); err != nil {
+		return storage.Config{}, fmt.Errorf("config: database: %w", err)
 	}
 
-	if err := env.Parse(&cfg); err != nil {
-		return storage.Config{}, err
-	}
-
-	storageCfg := storage.Config{
-		Host:                     cfg.Host,
-		Port:                     cfg.Port,
-		Name:                     cfg.Name,
-		User:                     cfg.User,
-		Password:                 cfg.Password,
-		DatabaseKind:             cfg.DatabaseKind,
-		SSLMode:                  cfg.SSLMode,
-		ApplicationName:          cfg.ApplicationName,
-		ConnectTimeout:           cfg.ConnectTimeout,
-		StatementCacheCapacity:   cfg.StatementCacheCapacity,
-		DescriptionCacheCapacity: cfg.DescriptionCacheCapacity,
-		MaxOpenConnections:       cfg.MaxOpenConnections,
-		MaxIdleConnections:       cfg.MaxIdleConnections,
-		ConnectionMaxLifetime:    cfg.ConnectionMaxLifetime,
-		ConnectionMaxIdleTime:    cfg.ConnectionMaxIdleTime,
-		OpenTelemetry:            cfg.OpenTelemetry,
-	}
-
-	return storageCfg, storageCfg.Validate()
+	return cfg, nil
 }

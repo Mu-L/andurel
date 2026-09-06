@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"{{.ModuleName}}/config"
+
 	"go.opentelemetry.io/otel"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -20,18 +22,6 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.uber.org/fx"
 )
-
-type ConfigProvider interface {
-	GetServiceName() string
-	GetServiceVersion() string
-	GetBatchSize() int
-	GetBatchTimeoutMs() int
-	GetTraceSampleRate() float64
-	GetOtlpLogsEndpoint() string
-	GetOtlpMetricsEndpoint() string
-	GetOtlpTracesEndpoint() string
-	GetOtlpHeaders() string
-}
 
 type Telemetry struct {
 	resource       *resource.Resource
@@ -42,38 +32,38 @@ type Telemetry struct {
 	config         *telemetryOptions
 }
 
-func New(cfg ConfigProvider) (*Telemetry, error) {
+func New(cfg config.Telemetry) (*Telemetry, error) {
 	ctx := context.Background()
 
 	opts := []Option{
-		WithService(cfg.GetServiceName(), cfg.GetServiceVersion()),
-		WithBatchConfig(cfg.GetBatchSize(), cfg.GetBatchTimeoutMs(), 2048),
-		WithTraceSampleRate(cfg.GetTraceSampleRate()),
+		WithService(cfg.ServiceName, cfg.ServiceVersion),
+		WithBatchConfig(cfg.BatchSize, cfg.BatchTimeoutMs, 2048),
+		WithTraceSampleRate(cfg.TraceSampleRate),
 	}
 
 	logExporters := []LogExporter{NewStdoutExporter()}
-	if cfg.GetOtlpLogsEndpoint() != "" {
+	if cfg.OtlpLogsEndpoint != "" {
 		logExporters = append(logExporters, NewOtlpLogExporter(
-			cfg.GetOtlpLogsEndpoint(),
-			parseHeaders(cfg.GetOtlpHeaders()),
-			cfg.GetBatchSize(),
-			time.Duration(cfg.GetBatchTimeoutMs())*time.Millisecond,
+			cfg.OtlpLogsEndpoint,
+			parseHeaders(cfg.OtlpHeaders),
+			cfg.BatchSize,
+			time.Duration(cfg.BatchTimeoutMs)*time.Millisecond,
 		))
 	}
 	opts = append(opts, WithLogExporters(logExporters...))
 
-	if cfg.GetOtlpMetricsEndpoint() != "" {
+	if cfg.OtlpMetricsEndpoint != "" {
 		opts = append(opts, WithMetricExporters(
 			NewOtlpMetricExporter(
-				cfg.GetOtlpMetricsEndpoint(),
-				parseHeaders(cfg.GetOtlpHeaders()),
+				cfg.OtlpMetricsEndpoint,
+				parseHeaders(cfg.OtlpHeaders),
 			),
 		))
 	}
 
-	if cfg.GetOtlpTracesEndpoint() != "" {
+	if cfg.OtlpTracesEndpoint != "" {
 		opts = append(opts, WithTraceExporters(
-			NewOtlpTraceExporter(cfg.GetOtlpTracesEndpoint(), parseHeaders(cfg.GetOtlpHeaders()))))
+			NewOtlpTraceExporter(cfg.OtlpTracesEndpoint, parseHeaders(cfg.OtlpHeaders))))
 	} else {
 		opts = append(opts, WithTraceExporters(NewNoopTraceExporter()))
 	}
@@ -246,6 +236,7 @@ func (t *Telemetry) Shutdown(ctx context.Context) error {
 	for _, shutdown := range slices.Backward(t.shutdownFuncs) {
 		shutdownErr = errors.Join(shutdownErr, shutdown(ctx))
 	}
+
 	return shutdownErr
 }
 

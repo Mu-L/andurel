@@ -249,15 +249,8 @@ func TestLoadProjectContext_RebuildsBlueprintWithExistingExtensions(t *testing.T
 		t.Fatalf("expected non-nil blueprint")
 	}
 
-	foundAwsSes := false
-	for _, field := range bp.Config.Fields {
-		if field.Name == "AwsSes" {
-			foundAwsSes = true
-			break
-		}
-	}
-	if !foundAwsSes {
-		t.Fatalf("expected AwsSes in blueprint config fields after re-applying aws-ses")
+	if len(bp.Config.Fields) != 0 {
+		t.Fatalf("expected typed configuration to stay template-owned, got %+v", bp.Config.Fields)
 	}
 
 	if len(bp.Config.EnvVars) != 0 {
@@ -338,11 +331,14 @@ func TestApplyExtension_AwsSes(t *testing.T) {
 	fileExists(t, projectDir, "clients/email/aws_ses.go")
 	fileExists(t, projectDir, "config/aws_ses.go")
 
-	// Verify blueprint was updated: config.go should contain AwsSes field
-	fileContains(t, projectDir, "config/config.go", "AwsSes")
-
-	// Verify AWS SES config was generated with code defaults
-	fileContains(t, projectDir, "config/aws_ses.go", "NewAwsSesCfg()")
+	// Verify AWS SES config remains template-owned and is wired into mail transport.
+	fileNotContains(t, projectDir, "config/config.go", "AWSSES")
+	fileContains(t, projectDir, "config/aws_ses.go", "func loadAWSSES(env *environment)")
+	fileContains(t, projectDir, "config/email.go", "AWSSESDriver")
+	fileContains(t, projectDir, "config/email.go", "AWSSES  AWSSES")
+	fileContains(t, projectDir, "config/config.go", "NewDatabase,")
+	fileContains(t, projectDir, "cmd/seeds/main.go", "config.NewDatabase()")
+	fileContains(t, projectDir, "cmd/app/main.go", "mailclients.NewAwsSes(ctx, cfg.AWSSES)")
 	fileNotContains(t, projectDir, ".env.example", "AWS_REGION")
 
 	// Verify lock file
@@ -443,8 +439,10 @@ func TestApplyExtension_PreservesExistingExtensions(t *testing.T) {
 	fileExists(t, projectDir, "Dockerfile")
 	fileExists(t, projectDir, ".dockerignore")
 
-	// Verify config.go still has AwsSes (blueprint preserved from existing extension)
-	fileContains(t, projectDir, "config/config.go", "AwsSes")
+	// Verify the template-owned AWS SES configuration is preserved.
+	fileNotContains(t, projectDir, "config/config.go", "AWSSES")
+	fileContains(t, projectDir, "config/email.go", "AWSSESDriver")
+	fileContains(t, projectDir, "config/email.go", "AWSSES  AWSSES")
 
 	// Verify .env.example stays secret-only even after aws-ses
 	fileNotContains(t, projectDir, ".env.example", "AWS_REGION")
@@ -516,8 +514,10 @@ func TestApplyExtension_GeneratedProject(t *testing.T) {
 
 	fileExists(t, projectDir, "clients/email/aws_ses.go")
 	fileExists(t, projectDir, "config/aws_ses.go")
-	fileContains(t, projectDir, "config/config.go", "AwsSes")
-	fileContains(t, projectDir, "config/aws_ses.go", "NewAwsSesCfg()")
+	fileNotContains(t, projectDir, "config/config.go", "AWSSES")
+	fileContains(t, projectDir, "config/aws_ses.go", "func loadAWSSES(env *environment)")
+	fileContains(t, projectDir, "config/email.go", "AWSSESDriver")
+	fileContains(t, projectDir, "config/email.go", "AWSSES  AWSSES")
 	fileNotContains(t, projectDir, ".env.example", "AWS_REGION")
 
 	lock, err := ReadLockFile(projectDir)

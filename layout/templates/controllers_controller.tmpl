@@ -2,6 +2,7 @@
 package controllers
 
 import (
+	"{{.ModuleName}}/config"
 	"{{.ModuleName}}/controllers/api"
 	"{{.ModuleName}}/router"
 	"{{.ModuleName}}/views"
@@ -12,13 +13,8 @@ import (
 	"go.uber.org/fx"
 )
 
-type ConfigProvider interface {
-	GetProjectName() string
-	GetBaseURL() string
-}
-
-func configureViews(cfg ConfigProvider) {
-	views.ConfigureHead(cfg.GetProjectName(), cfg.GetBaseURL())
+func configureViews(cfg config.App) {
+	views.ConfigureHead(cfg.ProjectName, cfg.BaseURL)
 }
 
 {{- if not .Inertia}}
